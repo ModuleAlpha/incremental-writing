@@ -83,6 +83,7 @@ export class IWSettingsTab extends PluginSettingTab {
       .addDropdown((comp) => {
         comp.addOption("afactor", "A-Factor Scheduler");
         comp.addOption("simple", "Simple Scheduler");
+        comp.addOption("iteration", "Iteration Scheduler");
         comp.setValue(String(settings.defaultQueueType)).onChange((value) => {
           settings.defaultQueueType = String(value);
           this.plugin.saveData(settings);

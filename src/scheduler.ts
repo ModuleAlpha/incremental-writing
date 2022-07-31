@@ -1,6 +1,7 @@
-import { MarkdownTable, MarkdownTableRow } from "./markdown";
+import { AfactorSchedulerTableRow, IterationSchedulerTableRow, MarkdownTable, MarkdownTableRow } from "./markdown";
 import "./helpers/date-utils";
 import "./helpers/number-utils";
+import { LogTo } from "./logger";
 
 export abstract class Scheduler {
   protected name: string;
@@ -17,7 +18,8 @@ export class SimpleScheduler extends Scheduler {
   }
 
   schedule(table: MarkdownTable, row: MarkdownTableRow) {
-    table.addRow(row);
+    LogTo.Console("schedule: " + row.link);
+    table.appendRow(row);
     // spread rows between 0 and 100 priority
     let step = 99.9 / table.rows.length;
     let curPri = step;
@@ -34,6 +36,41 @@ scheduler: "${this.name}"
   }
 }
 
+export class IterationScheduler extends Scheduler {
+  private iteration: string;
+
+  constructor(iteration: string = '') {
+    super("iteration");
+    this.iteration = iteration;
+  }
+
+  schedule(table: MarkdownTable, row: MarkdownTableRow) {
+    if(row instanceof IterationSchedulerTableRow) {
+      let newRow = row as IterationSchedulerTableRow;
+      LogTo.Console("Iteration schedule: " + row.link);
+      newRow.iteration = this.iteration;
+      newRow.lastReadDate = new Date();
+      table.appendRow(newRow);
+      // spread rows between 0 and 100 priority
+      let step = 99.9 / table.rows.length;
+      let curPri = step;
+      for (let row of table.rows) {
+        row.priority = curPri.round(2);
+        curPri += step;
+      }
+    } else {
+      LogTo.Console("Table Row - type incorrect!!", true);
+    }
+  }
+
+  toString() {
+    return `---
+scheduler: "${this.name}"
+iteration: "Test"
+---`;
+  }
+}
+
 export class AFactorScheduler extends Scheduler {
   private afactor: number;
   private interval: number;
@@ -45,9 +82,12 @@ export class AFactorScheduler extends Scheduler {
   }
 
   schedule(table: MarkdownTable, row: MarkdownTableRow) {
-    row.nextRepDate = new Date().addDays(row.interval);
-    row.interval = this.afactor * row.interval;
-    table.addRow(row);
+    if(row instanceof AfactorSchedulerTableRow) {
+      let newRow = row as AfactorSchedulerTableRow;
+      newRow.nextRepDate = new Date().addDays(row.interval);
+      newRow.interval = this.afactor * newRow.interval;
+      table.appendRow(newRow);
+    }
   }
 
   toString() {

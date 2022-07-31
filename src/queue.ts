@@ -4,18 +4,23 @@ import IW from "./main";
 import matter from "gray-matter";
 import { GrayMatterFile } from "gray-matter";
 import { NextRepScheduler } from "./views/next-rep-schedule";
+import { AFactorScheduler, IterationScheduler, Scheduler, SimpleScheduler } from "./scheduler";
 
 export class Queue {
   queuePath: string;
   plugin: IW;
+  scheduler: Scheduler;
 
-  constructor(plugin: IW, filePath: string) {
+  constructor(plugin: IW, filePath: string, frontMatter?: GrayMatterFile<string>) {
     this.plugin = plugin;
     this.queuePath = filePath;
+    this.scheduler = this.createScheduler(frontMatter);
   }
 
   async createTableIfNotExists() {
-    let data = new MarkdownTable(this.plugin).toString();
+    const yaml = this.scheduler.toString();
+    const table = new MarkdownTable(this.plugin).toString();
+    const data = yaml + '\n\n' + table;
     await this.plugin.files.createIfNotExists(this.queuePath, data);
   }
 
@@ -59,6 +64,35 @@ export class Queue {
     return table;
   }
 
+  private createScheduler(frontMatter: GrayMatterFile<string>): Scheduler {
+    let scheduler: Scheduler;
+
+    // Default
+    if (this.plugin.settings.defaultQueueType === "afactor") {
+      scheduler = new AFactorScheduler();
+    } else if (this.plugin.settings.defaultQueueType === "simple") {
+      scheduler = new SimpleScheduler();
+    } else if (this.plugin.settings.defaultQueueType === "iteration") {
+      scheduler = new IterationScheduler();
+    }
+
+    // Specified in YAML
+    if (frontMatter) {
+      let schedulerName = frontMatter.data["scheduler"];
+      if (schedulerName && schedulerName === "simple") {
+        scheduler = new SimpleScheduler();
+      } else if (schedulerName && schedulerName === "afactor") {
+        let afactor = Number(frontMatter.data["afactor"]);
+        let interval = Number(frontMatter.data["interval"]);
+        scheduler = new AFactorScheduler(afactor, interval);
+      } else if (schedulerName && schedulerName === "iteration") {
+        let iteration = frontMatter.data["iteration"];
+        scheduler = new IterationScheduler(iteration);
+      }
+    }
+    return scheduler;
+  }
+  
   getFrontmatterString(text: string): GrayMatterFile<string> {
     return matter(text);
   }
@@ -100,7 +134,7 @@ export class Queue {
     }
 
     table.removeCurrentRep();
-    table.schedule(currentRep);
+    this.scheduler.schedule(table, currentRep);
 
     let repToLoad = null;
     if (currentRep && currentRep.isDue()) {
@@ -159,7 +193,7 @@ export class Queue {
         continue;
       }
 
-      table.addRow(row);
+      table.appendRow(row);
       LogTo.Console("Added note to queue: " + row.link, true);
     }
 
@@ -175,7 +209,9 @@ export class Queue {
     let queue = this.getQueueAsTFile();
     if (queue) {
       table.removeDeleted();
-      let data = table.toString();
+      const yaml = this.scheduler.toString();
+      const tableData = table.toString();
+      const data = yaml + '\n\n' + tableData;
       table.sortReps();
       await this.plugin.app.vault.modify(queue, data);
     } else {
